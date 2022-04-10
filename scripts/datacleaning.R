@@ -88,3 +88,8 @@ ggplot(data = data_long_percapita_developing, aes(x = date, y = count_perht,colo
   xlab("date") +
   ylab("cases per 100,000 people")+
   labs(title="COVID-19 Cases per 100,000 people - Developing Nations", subtitle = "(1/22/2020 - 2/23/2022)")
+
+install.packages("credentials")
+library(credentials)
+
+#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
