@@ -54,14 +54,9 @@ aggregate_cases<- data_long %>%
   group_by(date) %>%
   summarise_at(vars(count), sum, na.rm=TRUE)
 
-ggplot(data = aggregate_cases, aes(x = date, y = log(count), group=1))+
-  theme_minimal()+
-  geom_line() +
-  xlab("date") +
-  ylab("log number of cases")+
-  labs(title="Cumulative Global COVID-19 Cases", subtitle = "(1/22/2020 - 2/23/2022)")
+df.aggregate_cases <- data.frame(aggregate_cases)
 
-#create dataset - cases per 100,000
+#cases per 100,000
 
 data_long_percapita <- data_long %>%
   mutate(perht= Population/100000)
@@ -69,27 +64,52 @@ data_long_percapita <- data_long %>%
 data_long_percapita<- data_long_percapita %>%
   mutate(count_perht= (count/perht))
 
-data_long_percapita_developed <- data_long_percapita %>%
-  filter(Combined_Key == "US" |Combined_Key=="Germany" |Combined_Key=="Spain"|Combined_Key=="Italy"| Combined_Key=="France")
+df_data_long_percapita <- data.frame(data_long_percapita)
 
-data_long_percapita_developing <- data_long_percapita %>%
-  filter(Combined_Key == "Brazil" |Combined_Key=="Argentina" |Combined_Key=="Chile"|Combined_Key=="India")
+# connect to Spark server
 
-ggplot(data = data_long_percapita_developed, aes(x = date, y = count_perht,color=Combined_Key))+
+library(sparklyr)
+
+sc <- spark_connect(master = "local",
+                    version = "2.3")
+
+#move data to Spark 
+
+cases_counts <- copy_to(sc, aggregate_cases, overwrite = T)
+cases_percapita <- copy_to(sc, data_long_percapita, overwrite = T)
+
+# filter data in Spark
+
+cases_percapita <- cases_percapita %>%
+  filter(Combined_Key == "US" |Combined_Key=="Germany" |Combined_Key=="China"|Combined_Key=="United Kingdom"| Combined_Key=="Brazil"| Combined_Key=="Mexico"| Combined_Key=="Japan")
+  
+summarise_all(cases_percapita)
+
+ggplot(data = cases_counts, aes(x = date, y = log(count), group=1))+
+  theme_minimal()+
+  geom_line() +
+  xlab("date") +
+  ylab("log number of cases")+
+  labs(title="Cumulative Global COVID-19 Cases", subtitle = "(1/22/2020 - 2/23/2022)")
+
+ggplot(data = cases_percapita, aes(x = date, y = count_perht,color=Combined_Key))+
   theme_minimal()+
   geom_line() +
   xlab("date") +
   ylab("cases per 100,000 people")+
   labs(title="COVID-19 Cases per 100,000 people - Developed Nations", subtitle = "(1/22/2020 - 2/23/2022)")
 
-ggplot(data = data_long_percapita_developing, aes(x = date, y = count_perht,color=Combined_Key))+
-  theme_minimal()+
-  geom_line() +
-  xlab("date") +
-  ylab("cases per 100,000 people")+
-  labs(title="COVID-19 Cases per 100,000 people - Developing Nations", subtitle = "(1/22/2020 - 2/23/2022)")
+## regression - log of number of cases using: country, population size and day since the start of the pandemic. 
 
-install.packages("credentials")
-library(credentials)
+#create a variable that is the number of days since collection began. as.duration(elapsed.time) / ddays(1)
+#How do you convert lists to data frames in Spark
+#install broom package
+#save the spark objects on the spark server - spark_write_parquet(okc_train,"data/okc-train.parquet")
+#view data on Spark after making changes - sdf_describe(okc_train, cols = c("age", "income"))
+#"use this" package
+
+model <- ml_linear_regression(cases_percapita,log(cases_percapita$count + 1) ~ cases_percapita$Population, cases_percapita$Combined_Key, cases_percapita$date)
+
+
 
 #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
