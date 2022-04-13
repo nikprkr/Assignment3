@@ -1,4 +1,3 @@
-install.packages("reshape2")
 
 library(tidyverse)
 library(reshape2)
@@ -44,7 +43,12 @@ data_long<- combined_table_clean %>%
     values_to = "count"
   )
 
+library(lubridate)
+
 data_long$date<- as_date(data_long$date, format="%m/%d/%y")
+data_long$ref_date <- c("01/22/2020")
+data_long$ref_date <- as_date(data_long$ref_date, format="%m/%d/%y")
+data_long$numdays <- as.numeric(difftime(data_long$date, data_long$ref_date, units = "days")) 
 
 #create a table with the aggregate case count
 
@@ -54,7 +58,7 @@ aggregate_cases<- data_long %>%
   group_by(date) %>%
   summarise_at(vars(count), sum, na.rm=TRUE)
 
-df.aggregate_cases <- data.frame(aggregate_cases)
+aggregate_cases <- data.frame(aggregate_cases)
 
 #cases per 100,000
 
@@ -64,7 +68,7 @@ data_long_percapita <- data_long %>%
 data_long_percapita<- data_long_percapita %>%
   mutate(count_perht= (count/perht))
 
-df_data_long_percapita <- data.frame(data_long_percapita)
+data_long_percapita <- data.frame(data_long_percapita)
 
 # connect to Spark server
 
@@ -80,10 +84,10 @@ cases_percapita <- copy_to(sc, data_long_percapita, overwrite = T)
 
 # filter data in Spark
 
-cases_percapita <- cases_percapita %>%
+cases_percapita_filtered <- cases_percapita %>%
   filter(Combined_Key == "US" |Combined_Key=="Germany" |Combined_Key=="China"|Combined_Key=="United Kingdom"| Combined_Key=="Brazil"| Combined_Key=="Mexico"| Combined_Key=="Japan")
   
-summarise_all(cases_percapita)
+sdf_describe(cases_percapita_filtered, cols = c("Population", "count"))
 
 ggplot(data = cases_counts, aes(x = date, y = log(count), group=1))+
   theme_minimal()+
@@ -112,4 +116,4 @@ model <- ml_linear_regression(cases_percapita,log(cases_percapita$count + 1) ~ c
 
 
 
-#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
+#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
