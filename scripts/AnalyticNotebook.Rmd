@@ -1,17 +1,36 @@
+---
+title: "AnalyticNotebook"
+author: "Nicholas Parker"
+date: "4/16/2022"
+output: html_document
+---
 
+```{r setup}
+knitr::opts_chunk$set(echo = T,
+                      results = "hold")
+```
+
+# Assignment 3 - Analytic Notebook
+
+#### This is an analytic notebook for Assignement 3 describing the code used and the rationale for using it. We're exploring data containing COVID-19 case counts for Germany, China, Japan, United Kingdom, US, Brazil, Mexico. We calculate the number of cases and rate of cases (cases/population) by country and day then produce a graph for the change in the number of cases and another for the change in rate by country. We then explore the influence of country, population, and the number of days since the panedemic began to determine their influence on overall case counts. 
+
+```{r analysis}
+
+# Adding packages to the R environment
 library(tidyverse)
 library(reshape2)
 library(lubridate)
 
-dir.create("./data")
-dir.create("./data/raw")
-dir.create("./data/clean")
-dir.create("./output")
-dir.create("./output/fig")
-dir.create("./output/tab")
-dir.create("./documentation")
-dir.create("./paper")
-dir.create("./scripts")
+# Creating the folder structure
+# dir.create("./data")
+# dir.create("./data/raw")
+# dir.create("./data/clean")
+# dir.create("./output")
+# dir.create("./output/fig")
+# dir.create("./output/tab")
+# dir.create("./documentation")
+# dir.create("./paper")
+# dir.create("./scripts")
 
 url_lookup_table<- "https://github.com/CSSEGISandData/COVID-19/blob/master/csse_covid_19_data/UID_ISO_FIPS_LookUp_Table.csv?raw=true"
 url_global<- "https://github.com/CSSEGISandData/COVID-19/blob/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_global.csv?raw=true"
@@ -21,21 +40,26 @@ global_data<- read_csv(url_global)
 
 global_data<- rename(global_data, "Combined_Key" = "Country/Region")
 
+# Merging the lookup table and the COVID data,
 combined_table <- left_join(global_data, lookup_table, "Combined_Key")
 
+# Creating an aggregate cases variable, as some countries were broken up into regions.
 cases <- combined_table %>%
   select(Country_Region,UID,iso2,iso3,Population, everything(),-code3,-FIPS, -Admin2, -Lat.x,-Lat.y, -Province_State,-Long_, -`Province/State`,-Long, -iso2,-iso3,-UID) %>%
   group_by(Combined_Key) %>%
   summarise_at(vars("1/22/20":"2/24/22"), sum, na.rm=TRUE)
 
+# Creating a population variable for each country, as some were grouped by region.
 population <- combined_table %>%
   select(Country_Region,UID,iso2,iso3,Population, everything(),-code3,-FIPS, -Admin2, -Lat.x,-Lat.y, -Province_State,-Long_, -`Province/State`,-Long, -iso2,-iso3,-UID) %>%
   group_by(Combined_Key) %>%
   summarise_at(vars(Population), mean, na.rm=TRUE)
 
+# Merging the datasets using "Combined_Key" (the country variable). 
 combined_table_clean <- left_join(cases, population, "Combined_Key") %>%
   select(Combined_Key, Population, everything())
 
+#Reshaping the data
 data_long<- combined_table_clean %>% 
   pivot_longer(
     cols = "1/22/20":"2/24/22",
@@ -43,25 +67,25 @@ data_long<- combined_table_clean %>%
     values_to = "count"
   )
 
+# Add lubridate package to help with formatting dates. 
 library(lubridate)
 
+#Formatting the "date" as a date and generating the number of days since the pandemic began variable ("numdays")
 data_long$date<- as_date(data_long$date, format="%m/%d/%y")
 data_long$ref_date <- c("01/22/2020")
 data_long$ref_date <- as_date(data_long$ref_date, format="%m/%d/%y")
 data_long$numdays <- as.numeric(difftime(data_long$date, data_long$ref_date, units = "days")) 
-
 data_long<- data_long %>%
   filter(Combined_Key == "US" |Combined_Key=="Germany" |Combined_Key=="China"|Combined_Key=="United Kingdom"| Combined_Key=="Brazil"| Combined_Key=="Mexico"| Combined_Key=="Japan")
 
-
 #create a table with the aggregate case count
-
 aggregate_cases<- data_long %>%
   group_by(Combined_Key, date) %>%
   summarise_at(vars(count), max, na.rm=TRUE) %>%
   group_by(date) %>%
   summarise_at(vars(count), sum, na.rm=TRUE)
 
+#converting to a data frame
 aggregate_cases <- data.frame(aggregate_cases)
 
 #cases per 100,000
@@ -78,45 +102,63 @@ data_long_percapita <- data.frame(data_long_percapita)
 
 # library(sparklyr)
 # 
-####After connecting to Spark, all commands ran slowly, if at all. The professor told me to run the code on my maching instead of Spark but provide some commands I would have used to manipulate the data in Spark.
-####My understanding is that dplyr commands work in Spark.
-
+##After connecting to Spark, all commands ran slowly, if at all. The professor told me to run the code on my maching instead of Spark but provide some commands I would have used to manipulate the data in Spark.
+##Some dplyr commands work in Spark. I would have used the "filter" function to select the subset of countries we're interested in.
 # sc <- spark_connect(master = "local",
 #                     version = "2.3")
 # 
-##move data to Spark 
+## Move onjects to the Spark server. 
 # 
 # cases_counts <- copy_to(sc, aggregate_cases, overwrite = T)
 # cases_percapita <- copy_to(sc, data_long_percapita, overwrite = T)
 
-## filter data in Spark using dplyr. Referencing the object that references the data moved to the Spark server. 
+## Filter data in Spark using dplyr. Referencing the object that references the data moved to the Spark server. 
 # 
 # cases_percapita_filtered <- cases_percapita %>%
-#   filter(Combined_Key == "US" |Combined_Key=="Germany" |Combined_Key=="China"|Combined_Key=="United Kingdom"| Combined_Key=="Brazil"| Combined_Key=="Mexico"| Combined_Key=="Japan")
+#   filter(Combined_Key == "US" |Combined_Key=="Germany" |Combined_Key=="China"|Combined_Key=="United Kingdom"| #Combined_Key=="Brazil"| Combined_Key=="Mexico"| Combined_Key=="Japan")
 # 
 ## Describing the datato make certain the filter worked properly since we are unable to view the object in Spark.
 #
 # sdf_describe(cases_percapita_filtered, cols = c("Population", "count"))
 # 
 
+
+
+```
+
+# Plots
+
+#### Below are plot for the aggregate daily case count among the selected countries and the rate of increase per 100,000 for each country, respectively.
+
+```{r charts}
+
+#Plotting the aggregate case count
 ggplot(data = aggregate_cases, aes(x = date, y = log(count), group=1))+
   theme_minimal()+
   geom_line() +
   xlab("date") +
   ylab("log number of cases")+
-  labs(title="Cumulative Global COVID-19 Cases", subtitle = "(1/22/2020 - 2/23/2022)")
+  labs(title="Cumulative COVID-19 Cases", subtitle = "Germany, China, Japan, United Kingdom, US, Brazil, and Mexico (1/22/2020 - 2/23/2022)")
 
+# Plottign the daily rate of infection (per 100,000 people) for each country
 ggplot(data = data_long_percapita, aes(x = date, y = count_perht,color=Combined_Key))+
   theme_minimal()+
   geom_line() +
   xlab("date") +
   ylab("cases per 100,000 people")+
-  labs(title="COVID-19 Cases per 100,000 people - Developed Nations", subtitle = "(1/22/2020 - 2/23/2022)")
+  labs(title="COVID-19 Cases per 100,000 people - Developed Nations", subtitle = "Germany, China, Japan, United Kingdom, US, Brazil, and Mexico (1/22/2020 - 2/23/2022)")
+
+
+```
+
+# Linear Model
+
+#### The model suggests that time (number of days since the pandemic began) had the largest influence on daily case counts. The country's population also contributed to the growth in case counts. There was some dispersion in terms of the country effect on daily case counts likely reflecting the various public health approaches taken by authorities in each country.
+
+```{r model, results='asis'}
 
 ## regression - log of number of cases using: country, population size and day since the start of the pandemic. 
 
-#install broom package
-#save the spark objects on the spark server - spark_write_parquet(okc_train,"data/okc-train.parquet")
 #view data on Spark after making changes - sdf_describe(okc_train, cols = c("age", "income"))
 
 ##If using Spark, would use the ml_linear_regressions command from the Spark Machine learning library.
@@ -125,8 +167,16 @@ ggplot(data = data_long_percapita, aes(x = date, y = count_perht,color=Combined_
 
 library(texreg)
 
+#Run a regression of the daily count of COVID cases on the number of days since the beginning of the pandemic, the country, and the population of the country.
 model <- lm(count ~ numdays + Population + Combined_Key, data=data_long_percapita)
 summary(model)
+
+# Create a formatted HTML table containing the model's results 
 model_table <- htmlreg(model)
 
+#Display the table
 model_table
+
+```
+
+##
